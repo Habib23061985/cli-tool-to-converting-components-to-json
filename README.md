@@ -332,6 +332,48 @@ async function migrateComponents() {
 }
 ```
 
+### Environment Variables
+
+The tool supports various configuration options through environment variables. Create a `.env` file in your project root based on the provided `.env.example`:
+
+```bash
+# Copy the example environment file
+cp .env.example .env
+
+# Edit the .env file with your settings
+nano .env  # or use your preferred editor
+```
+
+Key environment variables:
+
+1. **Project Settings**:
+   - `PROJECT_NAME`: Name of your documentation project
+   - `COMPONENTS_DIR`: Directory containing your React components
+   - `OUTPUT_DIR`: Where documentation will be generated
+
+2. **Documentation Settings**:
+   - `INCLUDE_PRIVATE`: Whether to include private members
+   - `INCLUDE_PROTECTED`: Whether to include protected members
+   - `VERBOSE_OUTPUT`: Enable detailed output logging
+
+3. **Format Settings**:
+   - `DEFAULT_FORMAT`: Default output format (json/markdown/html)
+   - `ENABLE_MARKDOWN`: Enable Markdown output
+   - `ENABLE_HTML`: Enable HTML output
+
+4. **Parser Settings**:
+   - `TYPESCRIPT_ENABLED`: Enable TypeScript parsing
+   - `JSX_ENABLED`: Enable JSX parsing
+   - `PARSE_COMMENTS`: Parse JSDoc comments
+   - `PARSE_EXAMPLES`: Extract code examples
+
+5. **Output Settings**:
+   - `PRETTY_PRINT`: Format output for readability
+   - `MAX_CODE_LENGTH`: Maximum line length for code examples
+   - `INCLUDE_LINE_NUMBERS`: Add line numbers to code examples
+
+For a complete list of options, see `.env.example` in the repository.
+
 ### AI Response Templates
 
 1. **Installation Help**:
