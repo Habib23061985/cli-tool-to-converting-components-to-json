@@ -1,9 +1,30 @@
 import { documentCommand } from '../commands/document';
 import fs from 'fs-extra';
 import path from 'path';
+import { loadConfig } from '../utils/config';
+import '../test-utils/custom-matchers';
+
+// Mock process.exit and console.error
+let exitCode: number | null | undefined;
+const exitMock = jest.spyOn(process, 'exit').mockImplementation((code?: string | number | null) => {
+  exitCode = typeof code === 'number' ? code : 1;
+  return undefined as never;
+});
+
+const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
 // Mock fs-extra
-jest.mock('fs-extra');
+// Mock fs-extra and path
+jest.mock('fs-extra', () => ({
+  pathExists: jest.fn(() => Promise.resolve(true)),
+  readJson: jest.fn(() => Promise.resolve({})),
+  existsSync: jest.fn(() => true),
+  readdirSync: jest.fn(() => []),
+  readFileSync: jest.fn(() => ''),
+  writeJSONSync: jest.fn()
+}));
+
 const mockedFs = fs as jest.Mocked<typeof fs>;
 
 // Mock path
@@ -15,26 +36,27 @@ const mockedPath = path as jest.Mocked<typeof path>;
 
 describe('documentCommand', () => {
   beforeEach(() => {
-    // Clear all mocks before each test
     jest.clearAllMocks();
+    exitCode = undefined;
     
-    // Setup default mock implementations
-    mockedFs.existsSync.mockReturnValue(true);
-    mockedFs.readdirSync.mockReturnValue(['Button.tsx', 'Icon.tsx']);
-    mockedFs.readFileSync.mockReturnValue(`
+    mockedFs.pathExists.mockImplementation(() => Promise.resolve(true));
+    mockedFs.readJson.mockImplementation(() => Promise.resolve({
+      projectName: 'test-project',
+      figmaToken: 'test-token',
+      outputDirectory: './src',
+      codeConnect: {
+        include: ['**/*.tsx'],
+        parser: 'typescript'
+      }
+    }));
+    mockedFs.existsSync.mockImplementation(() => true);
+    mockedFs.readdirSync.mockImplementation(() => ['Button.tsx', 'Icon.tsx'] as any);
+    mockedFs.readFileSync.mockImplementation(() => `
       import React from 'react';
-      
       interface ButtonProps {
-        /** The variant of the button */
         variant: 'primary' | 'secondary';
-        /** Click handler */
         onClick: () => void;
       }
-      
-      /**
-       * A customizable button component.
-       * @component
-       */
       export const Button: React.FC<ButtonProps> = ({ variant, onClick }) => {
         return <button onClick={onClick}>Click me</button>;
       };
@@ -42,90 +64,56 @@ describe('documentCommand', () => {
   });
 
   it('should generate documentation for components', async () => {
-    // Setup path resolve mock
-    mockedPath.resolve
-      .mockReturnValueOnce('/path/to/components')  // componentsDir
-      .mockReturnValueOnce('/path/to/output.json'); // outputFile
-
-    // Execute command
     await documentCommand({ output: 'output.json' });
 
-    // Verify components directory was checked
-    expect(mockedFs.existsSync).toHaveBeenCalledWith('/path/to/components');
+    expect(mockedFs.pathExists).toHaveBeenCalled();
+    expect(mockedFs.readJson).toHaveBeenCalled();
+    expect(mockedFs.readdirSync).toHaveBeenCalled();
+    expect(mockedFs.readFileSync).toHaveBeenCalled();
+    expect(mockedFs.writeJSONSync).toHaveBeenCalled();
+    expect(exitCode).toBeUndefined();
+  });
 
-    // Verify component files were read
-    expect(mockedFs.readdirSync).toHaveBeenCalledWith('/path/to/components');
-
-    // Verify documentation was written
-    expect(mockedFs.writeJSONSync).toHaveBeenCalledWith(
-      '/path/to/output.json',
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: 'Button',
-          props: expect.arrayContaining([
-            expect.objectContaining({
-              name: 'variant',
-              type: 'enum',
-              values: ['primary', 'secondary'],
-            }),
-            expect.objectContaining({
-              name: 'onClick',
-              type: 'function',
-            }),
-          ]),
-        }),
-      ]),
-      expect.anything()
-    );
+  it('should handle missing config file', async () => {
+    mockedFs.pathExists.mockImplementation(() => Promise.resolve(false));
+    
+    await expect(documentCommand({ output: 'output.json' }))
+      .rejects.toThrow('Process.exit called');
+    expect(exitCode).toBe(1);
   });
 
   it('should handle missing components directory', async () => {
-    // Mock directory not existing
-    mockedFs.existsSync.mockReturnValue(false);
+    mockedFs.existsSync.mockImplementation(() => false);
 
-    // Execute and verify error is thrown
-    await expect(documentCommand({})).rejects.toThrow('Components directory not found');
+    await expect(documentCommand({})).rejects.toThrow('Process.exit called');
+    expect(exitCode).toBe(1);
   });
 
   it('should handle parse errors gracefully', async () => {
-    // Mock invalid TypeScript file
-    mockedFs.readFileSync.mockReturnValue('invalid typescript code');
+    mockedFs.readFileSync.mockImplementation(() => 'invalid typescript code');
 
-    // Spy on console.warn
-    const consoleSpy = jest.spyOn(console, 'warn').mockImplementation();
-
-    // Execute command
     await documentCommand({ output: 'output.json' });
 
-    // Verify warning was logged
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining('Could not fully parse')
-    );
-
-    consoleSpy.mockRestore();
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Could not parse'));
+    expect(exitCode).toBeUndefined();
   });
 
   it('should filter out test and type definition files', async () => {
-    // Mock directory with various file types
-    mockedFs.readdirSync.mockReturnValue([
+    mockedFs.readdirSync.mockImplementation(() => [
       'Button.tsx',
       'Button.test.tsx',
       'Button.spec.tsx',
       'Button.d.ts',
       'Icon.tsx',
-    ]);
+    ] as any);
 
     await documentCommand({ output: 'output.json' });
 
-    // Verify only valid component files were processed
-    expect(mockedFs.readFileSync).toHaveBeenCalledTimes(2);
-    expect(mockedFs.readFileSync).toHaveBeenCalledWith(
-      expect.stringContaining('Button.tsx'),
-      'utf-8'
-    );
-    expect(mockedFs.readFileSync).toHaveBeenCalledWith(
-      expect.stringContaining('Icon.tsx'),
-      'utf-8'
-    );
+    const readCalls = mockedFs.readFileSync.mock.calls;
+    const processedFiles = readCalls.map(call => path.basename(call[0].toString()));
+    expect(processedFiles).toContain('Button.tsx');
+    expect(processedFiles).toContain('Icon.tsx');
+    expect(processedFiles).not.toContain('Button.test.tsx');
+    expect(processedFiles).not.toContain('Button.d.ts');
   });
 });

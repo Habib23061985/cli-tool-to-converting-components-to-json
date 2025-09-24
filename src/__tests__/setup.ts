@@ -1,20 +1,11 @@
 import { cleanup } from '@testing-library/react';
 
-// Extend Jest matchers
-expect.extend({
-  toContainObject(received: any[], argument: object) {
-    const pass = received.some((obj) =>
-      Object.keys(argument).every((key) => obj[key] === argument[key])
-    );
+beforeEach(() => {
+  jest.clearAllMocks();
+});
 
-    return {
-      message: () =>
-        `expected ${JSON.stringify(received)} to contain object ${JSON.stringify(
-          argument
-        )}`,
-      pass,
-    };
-  },
+afterEach(() => {
+  cleanup();
 });
 
 // Global test setup

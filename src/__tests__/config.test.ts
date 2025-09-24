@@ -3,13 +3,11 @@ import fs from 'fs-extra';
 import path from 'path';
 
 jest.mock('fs-extra');
-const mockedFs = fs as jest.Mocked<typeof fs>;
-
-jest.mock('path', () => ({
-  ...jest.requireActual('path'),
-  resolve: jest.fn(),
-}));
-const mockedPath = path as jest.Mocked<typeof path>;
+const mockedFs = fs as unknown as {
+  pathExists: jest.SpyInstance<Promise<boolean>>;
+  readJson: jest.SpyInstance<Promise<any>>;
+  writeJson: jest.SpyInstance<Promise<void>>;
+};
 
 describe('Config Utils', () => {
   describe('loadConfig', () => {
@@ -20,41 +18,55 @@ describe('Config Utils', () => {
     it('should load configuration from file', async () => {
       // Mock config file content
       const mockConfig = {
-        componentsDir: './src/components',
-        outputDir: './docs',
-        includes: ['**/*.tsx'],
-        excludes: ['**/*.test.tsx'],
+        projectName: 'test-project',
+        figmaToken: 'test-token',
+        outputDirectory: './src',
+        codeConnect: {
+          include: ['**/*.tsx'],
+          parser: 'typescript'
+        }
       };
 
-      mockedFs.existsSync.mockReturnValue(true);
-      mockedFs.readJSON.mockResolvedValue(mockConfig);
-      mockedPath.resolve.mockReturnValue('/path/to/config');
+      mockedFs.pathExists.mockResolvedValue(true);
+      mockedFs.readJson.mockResolvedValue(mockConfig);
 
       const config = await loadConfig();
 
       expect(config).toEqual(mockConfig);
-      expect(mockedFs.existsSync).toHaveBeenCalled();
-      expect(mockedFs.readJSON).toHaveBeenCalled();
+      expect(mockedFs.pathExists).toHaveBeenCalledWith(expect.stringContaining('figma-cli.config.json'));
+      expect(mockedFs.readJson).toHaveBeenCalledWith(expect.stringContaining('figma-cli.config.json'));
     });
 
-    it('should return default config when file not found', async () => {
-      mockedFs.existsSync.mockReturnValue(false);
-      mockedPath.resolve.mockReturnValue('/path/to/config');
+    it('should return null when file not found', async () => {
+      mockedFs.pathExists.mockResolvedValue(false);
 
       const config = await loadConfig();
 
-      expect(config).toEqual(expect.objectContaining({
-        componentsDir: expect.any(String),
-        outputDir: expect.any(String),
-      }));
+      expect(config).toBeNull();
+    });
+
+    it('should handle invalid JSON errors', async () => {
+      mockedFs.pathExists.mockResolvedValue(true);
+      mockedFs.readJson.mockRejectedValue(new Error('Invalid JSON'));
+      
+      const config = await loadConfig();
+      
+      expect(config).toBeNull();
+    });
+
+    it('should handle other file system errors', async () => {
+      mockedFs.pathExists.mockRejectedValue(new Error('Access denied'));
+      
+      const config = await loadConfig();
+      
+      expect(config).toBeNull();
     });
 
     it('should handle invalid config file', async () => {
-      mockedFs.existsSync.mockReturnValue(true);
-      mockedFs.readJSON.mockRejectedValue(new Error('Invalid JSON'));
-      mockedPath.resolve.mockReturnValue('/path/to/config');
-
-      await expect(loadConfig()).rejects.toThrow('Failed to load config');
+      mockedFs.readJson.mockResolvedValue({ invalidConfig: true });
+      
+      const config = await loadConfig();
+      expect(config).toBeNull();
     });
   });
 });
