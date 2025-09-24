@@ -5,6 +5,11 @@ import path from 'path';
 import { loadConfig } from '../utils/config';
 import { parse, AST_NODE_TYPES, AST_TOKEN_TYPES } from '@typescript-eslint/typescript-estree';
 import type { TSESTree } from '@typescript-eslint/types';
+import { getRelativeComponentPath } from '../utils/pathConfig';
+
+interface DocumentCommandOptions {
+  output?: string;
+}
 
 interface PropDocumentation {
   name: string;
@@ -181,13 +186,27 @@ function generateCodeExample(componentName: string, props: PropDocumentation[]):
 /**
  * Generates component documentation in JSON format for all components in the src/components directory
  */
-export async function documentCommand(options: { output?: string }): Promise<void> {
+export async function documentCommand(options: DocumentCommandOptions): Promise<void> {
   console.log(chalk.blue('📚 Generating component documentation...\n'));
-
-  const componentsDir = path.resolve(process.cwd(), '../src/components');
-  const outputFile = path.resolve(process.cwd(), options.output || '../docs/components.json');
-  
   const spinner = ora('Analyzing components...').start();
+
+  // Load and validate config
+  const config = await loadConfig();
+  if (!config) {
+    spinner.fail();
+    console.error(chalk.red('Error: Configuration file not found. Run `init` command first.'));
+    process.exit(1);
+    return; // This helps TypeScript understand the function will exit
+  }
+
+  const componentsDir = path.resolve(process.cwd(), config.componentsDir || '../src/components');
+  const outputFile = path.resolve(process.cwd(), options.output || config.outputDirectory || '../docs/components.json');
+
+  if (!fs.existsSync(componentsDir)) {
+    spinner.fail();
+    console.error(chalk.red(`Error: Components directory not found: ${componentsDir}`));
+    process.exit(1);
+  }
 
   try {
     if (!fs.existsSync(componentsDir)) {
@@ -274,7 +293,7 @@ export async function documentCommand(options: { output?: string }): Promise<voi
             name: componentName,
             props,
             codeExample: generateCodeExample(componentName, props),
-            importPath: `./src/components/${componentName}`,
+            importPath: getRelativeComponentPath(componentName),
             documentation: componentDoc || `${componentName} component`
           });
         }

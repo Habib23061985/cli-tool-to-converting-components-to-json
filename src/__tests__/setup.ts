@@ -8,6 +8,12 @@ afterEach(() => {
   cleanup();
 });
 
+describe('Test Environment', () => {
+  it('should have Jest properly configured', () => {
+    expect(true).toBe(true);
+  });
+});
+
 // Global test setup
 beforeAll(() => {
   // Add any global setup here

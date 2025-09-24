@@ -5,6 +5,7 @@ export interface Config {
   projectName: string;
   figmaToken: string;
   outputDirectory: string;
+  componentsDir?: string;
   figmaFileId?: string;
   codeConnect: {
     include: string[];
